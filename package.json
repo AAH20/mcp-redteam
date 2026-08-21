@@ -1,7 +1,7 @@
 {
   "name": "mcp-redteam",
-  "version": "0.1.0",
-  "description": "Adversarial scenario runner for MCP servers: tool-description rug-pulls, unannotated destructive tools, and oversized-payload handling on read-only tools.",
+  "version": "0.2.0",
+  "description": "Adversarial scenario runner for MCP servers: tool-description rug-pulls, unannotated destructive tools, oversized-payload handling, and unauthenticated tool exposure over HTTP.",
   "type": "module",
   "license": "Apache-2.0",
   "author": "Ahmed Hassan (A2Z SOC)",
@@ -34,14 +34,16 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare": "npm run build",
-    "test": "npm run build && node --test dist/tests/tool-description-stability.test.js dist/tests/unannotated-destructive-tools.test.js dist/tests/oversized-payload.test.js dist/tests/runner.test.js",
+    "test": "npm run build && node --test dist/tests/tool-description-stability.test.js dist/tests/unannotated-destructive-tools.test.js dist/tests/oversized-payload.test.js dist/tests/unauthenticated-tool-exposure.test.js dist/tests/runner.test.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.30.0"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^22.10.0",
+    "express": "^5.2.1",
     "typescript": "^5.4.0",
     "zod": "^3.25.0"
   }

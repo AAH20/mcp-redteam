@@ -1,7 +1,7 @@
 ---
 name: mcp-redteam
-version: 0.1.0
-description: Runs adversarial scenarios against a live MCP server (tool description "rug pulls", unannotated destructive tools, oversized-payload handling) and reports real findings, not simulated ones.
+version: 0.2.0
+description: Runs adversarial scenarios against a live MCP server — over stdio or HTTP — covering tool description "rug pulls", unannotated destructive tools, oversized-payload handling, and unauthenticated tool exposure. Reports real findings, not simulated ones.
 author: Ahmed Hassan
 tags: [mcp, model-context-protocol, security, red-team, agentic-ai]
 agents: [claude-code, codex-cli, cursor]
@@ -19,8 +19,8 @@ or as part of reviewing someone else's server.
   server.
 - The user is about to connect an agent to a third-party or newly-written
   MCP server and wants a sanity check first.
-- The user mentions MCP tool poisoning, "rug pull" tools, or unannotated
-  destructive tools.
+- The user mentions MCP tool poisoning, "rug pull" tools, unannotated
+  destructive tools, or an MCP server reachable without authentication.
 
 ## What it actually checks
 
@@ -35,6 +35,10 @@ or as part of reviewing someone else's server.
    a tool the server itself declared `readOnlyHint: true`, and checks
    whether it's bounded rather than hanging. This one calls the target's
    tools for real; only run it against a system you're authorized to test.
+4. **Unauthenticated tool exposure** (HTTP targets only) — makes an
+   independent, credential-free connection attempt and checks whether the
+   server returns tools anyway. Modeled on RufRoot (CVE-2026-59726, CVSS
+   10.0): Ruflo's MCP bridge exposed 233 tools with zero authentication.
 
 ## How to run it
 
@@ -47,6 +51,10 @@ npx mcp-redteam scan -- npx -y @modelcontextprotocol/server-everything
 # add --allow-tool-calls to also run the invasive oversized-payload scenario
 npx mcp-redteam scan --allow-tool-calls -- node ./my-server.js
 
+# HTTP target — also runs unauthenticated-tool-exposure automatically
+npx mcp-redteam scan --url http://localhost:3001/mcp
+npx mcp-redteam scan --url http://localhost:3001/mcp --header "Authorization: Bearer sk-..."
+
 # --json for machine-readable output
 npx mcp-redteam scan --json -- node ./my-server.js
 ```
@@ -56,9 +64,12 @@ otherwise — safe to wire into CI.
 
 ## Honest scope
 
-This checks 3 specific, real attack classes modeled on disclosed MCP
-incidents (CVE-2025-49596, the Invariant Labs GitHub MCP exfiltration
-disclosure, and the April 2026 OX Security MCP SDK supply-chain advisory).
-It does not check authentication, OAuth token-audience validation, prompt
-injection, or anything not listed above. A clean report means these 3
-things weren't found — it is not a certification that the server is safe.
+This checks 4 specific, real attack classes, each modeled on a named,
+disclosed incident: general MCP tool-poisoning research (rug pull), the
+MCP spec's own tool-annotation design intent (unannotated destructive
+tools), a real open finding on a live litellm PR adding MCP guardrails
+(oversized payloads), and RufRoot/CVE-2026-59726 (unauthenticated
+exposure). It does not check OAuth token-audience/confused-deputy
+validation, prompt injection, or anything not listed above. A clean report
+means these 4 things weren't found — it is not a certification that the
+server is safe.

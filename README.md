@@ -8,8 +8,9 @@
 
 ## What this is
 
-`mcp-redteam` connects to a live MCP server over stdio and runs three
-scenarios modeled on real, disclosed MCP incidents:
+`mcp-redteam` connects to a live MCP server — over stdio, or over
+Streamable HTTP — and runs scenarios modeled on real, disclosed MCP
+incidents:
 
 1. **`tool-description-stability`** — lists the target's tools twice, a
    short delay apart, and diffs them by name. A tool whose description or
@@ -29,18 +30,27 @@ scenarios modeled on real, disclosed MCP incidents:
    rejection) or hangs past a timeout (no bound observed). This is the one
    scenario that actually invokes the target's tools — never run it
    against a system you aren't authorized to test.
+4. **`unauthenticated-tool-exposure`** *(HTTP targets only)* — makes an
+   independent, credential-free connection attempt to the target and
+   checks whether it returns tools from `tools/list` anyway. Modeled
+   directly on RufRoot (CVE-2026-59726): Ruflo's MCP bridge exposed 233
+   tools over HTTP with zero authentication, giving full command execution
+   from a single unauthenticated request. Runs alongside — and
+   independently of — the scenarios above, including when the primary
+   (credentialed) connection fails.
 
 ## What this is not
 
 - **Not a static scanner.** It doesn't read source code; it drives the
   real MCP protocol against a running server, the same way an agent would.
-- **Not authentication or OAuth testing.** It doesn't validate token
-  audiences, test confused-deputy credential forwarding, or check auth at
-  all in this version — that's a real, separate, harder-to-safely-automate
-  problem, deliberately out of scope for v0.1.
+- **Not OAuth token-audience / confused-deputy validation.** That's a
+  real, separate, harder problem — checking whether a server actually
+  rejects a token issued for a different audience — deliberately not yet
+  shipped. `unauthenticated-tool-exposure` only checks the simpler,
+  blunter case: no credentials presented at all.
 - **Not prompt-injection testing.** Out of scope; existing tools (garak,
   PyRIT, promptfoo) already cover that surface well.
-- **Not a certification.** A clean report means these 3 specific things
+- **Not a certification.** A clean report means these specific things
   weren't found on this run — nothing more.
 
 ## Install
@@ -72,6 +82,13 @@ mcp-redteam scan --allow-tool-calls -- node ./my-server.js
 
 # Machine-readable output, e.g. for CI
 mcp-redteam scan --json -- node ./my-server.js
+
+# HTTP target — also runs unauthenticated-tool-exposure automatically
+mcp-redteam scan --url http://localhost:3001/mcp
+
+# HTTP target with credentials for the other scenarios (exposure always
+# connects with none, regardless of --header)
+mcp-redteam scan --url http://localhost:3001/mcp --header "Authorization: Bearer sk-..."
 ```
 
 Exit code is `1` if any high/critical-severity finding was reported, `0`
@@ -93,15 +110,36 @@ Each scenario traces to a real, disclosed incident, not a hypothetical:
   in-progress litellm PR (`BerriAI/litellm#35142`) adding MCP guardrails —
   confirmed as a real, currently-open concern in production MCP tooling,
   not invented for this project.
+- **Unauthenticated tool exposure**: RufRoot (CVE-2026-59726, CVSS 10.0) —
+  Noma Security disclosed that Ruflo's MCP bridge accepted tool calls with
+  zero authentication on port 3001, giving unauthenticated remote command
+  execution. Disclosed June 30, 2026; fixed within 24 hours.
 
 ## Tested against a real server, not just fixtures
 
-Development caught one real false-positive: `unannotated-destructive-tools`
-initially matched the substring `"format"` inside `"information"` when run
-against the official `@modelcontextprotocol/server-everything` reference
-server — fixed with word-boundary matching, with a regression test for it.
-A second real bug — an explicit `destructiveHint: false` being treated the
-same as "no annotation at all" — was found and fixed the same way.
+Development caught several real bugs, not hypotheticals:
+
+- `unannotated-destructive-tools` initially matched the substring
+  `"format"` inside `"information"` when run against the official
+  `@modelcontextprotocol/server-everything` reference server — fixed with
+  word-boundary matching, with a regression test.
+- An explicit `destructiveHint: false` was being treated the same as "no
+  annotation at all" — fixed the same way.
+- Building the HTTP fixture server hit a real, currently-open regression
+  in `@modelcontextprotocol/sdk`'s stateless `StreamableHTTPServerTransport`
+  (`modelcontextprotocol/typescript-sdk#1994`): reusing one transport
+  instance across requests makes every request after the first return a
+  bare `500` with no catchable error. Reproduced with both raw `node:http`
+  and Express before tracing it to the known issue; worked around by
+  following the SDK's own documented pattern — a fresh transport per
+  request in stateless mode.
+- A rug-pull fixture used a fixed 50ms timer to mutate a tool's
+  description mid-test; under real system load, process spawn + MCP
+  handshake + the first `listTools()` call sometimes took longer than
+  that, so the mutation landed before the "before" snapshot was even
+  taken — a real, observed intermittent test failure, not a hypothetical
+  one. Fixed by widening the margin (200ms fixture timer, 500ms test
+  delay) rather than leaving it flaky.
 
 ## Tests
 
@@ -109,35 +147,40 @@ same as "no annotation at all" — was found and fixed the same way.
 npm test
 ```
 
-8/8 pass, exercising both the positive and negative case for each
-scenario against a real MCP server (built for the test suite using the
-official `@modelcontextprotocol/sdk`), plus the default-vs-opt-in scenario
-selection in the runner itself.
+12/12 pass, exercising both the positive and negative case for every
+scenario against real MCP servers (stdio and HTTP, both built for the
+test suite using the official `@modelcontextprotocol/sdk`), plus scenario
+selection in the runner — including that `unauthenticated-tool-exposure`
+still runs when the primary credentialed connection fails.
 
 ## Architecture
 
 ```
 mcp-redteam/
 ├── src/
-│   ├── client.ts               # connects to a target MCP server over stdio
-│   ├── runner.ts                # orchestrates scenarios, collects results
-│   ├── report.ts                # console/JSON formatting
-│   ├── cli.ts                   # mcp-redteam scan ...
+│   ├── client.ts                    # connects to a target MCP server over stdio
+│   ├── http-client.ts               # connects to a target MCP server over Streamable HTTP
+│   ├── runner.ts                    # orchestrates scenarios, collects results
+│   ├── report.ts                    # console/JSON formatting
+│   ├── cli.ts                       # mcp-redteam scan ...
 │   └── scenarios/
 │       ├── tool-description-stability.ts
 │       ├── unannotated-destructive-tools.ts
-│       └── oversized-payload.ts
+│       ├── oversized-payload.ts
+│       └── unauthenticated-tool-exposure.ts
 └── tests/
-    ├── fixtures/fixture-server.ts   # real MCP server, mode-switched for each scenario
+    ├── fixtures/fixture-server.ts        # real stdio MCP server, mode-switched
+    ├── fixtures/http-fixture-server.ts   # real HTTP MCP server, mode-switched
     └── *.test.ts
 ```
 
 ## Roadmap
 
-Not shipped in v0.1, deliberately: OAuth token-audience / confused-deputy
-validation, cross-session tool-scope isolation, and HTTP/SSE transport
-support (stdio only for now). These need more careful safety design before
-being invasive-by-default the way `oversized-payload` already is opt-in.
+Not shipped yet, deliberately: OAuth token-audience / confused-deputy
+validation (checking a server actually rejects a wrong-audience token, not
+just no token at all) and cross-session tool-scope isolation. These need
+more careful safety design before being invasive-by-default the way
+`oversized-payload` already is opt-in.
 
 ## License
 
