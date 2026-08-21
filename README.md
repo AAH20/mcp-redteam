@@ -38,16 +38,25 @@ incidents:
    from a single unauthenticated request. Runs alongside — and
    independently of — the scenarios above, including when the primary
    (credentialed) connection fails.
+5. **`token-audience-validation`** *(HTTP targets only)* — makes another
+   independent connection attempt, this time presenting a syntactically
+   JWT-shaped but unsigned bearer token whose `aud` claim names an
+   unrelated resource, and checks whether the server accepts it. The MCP
+   authorization spec requires servers to validate that a token was
+   actually issued for them (RFC 9068's audience claim) — this checks the
+   floor of that: does the server look at the token's claims at all, or
+   does it just check that *some* Authorization header is present?
 
 ## What this is not
 
 - **Not a static scanner.** It doesn't read source code; it drives the
   real MCP protocol against a running server, the same way an agent would.
-- **Not OAuth token-audience / confused-deputy validation.** That's a
-  real, separate, harder problem — checking whether a server actually
-  rejects a token issued for a different audience — deliberately not yet
-  shipped. `unauthenticated-tool-exposure` only checks the simpler,
-  blunter case: no credentials presented at all.
+- **Not full OAuth conformance testing.** `token-audience-validation`
+  doesn't forge a token a real issuer would sign — it can't, without a
+  trusted signing key it has no business having. A server that checks the
+  audience claim but not the signature would incorrectly pass this check.
+  It catches the shallower, more common failure (no meaningful validation
+  at all), not full RFC 9068 conformance.
 - **Not prompt-injection testing.** Out of scope; existing tools (garak,
   PyRIT, promptfoo) already cover that surface well.
 - **Not a certification.** A clean report means these specific things
@@ -114,6 +123,11 @@ Each scenario traces to a real, disclosed incident, not a hypothetical:
   Noma Security disclosed that Ruflo's MCP bridge accepted tool calls with
   zero authentication on port 3001, giving unauthenticated remote command
   execution. Disclosed June 30, 2026; fixed within 24 hours.
+- **Token audience validation**: the MCP spec's own confused-deputy issue
+  (`modelcontextprotocol/modelcontextprotocol#333`) closed in 2025 with an
+  explicit MUST-validate-audience requirement — but the requirement being
+  in the spec doesn't mean real servers enforce it. No automated tool
+  checked whether they actually do before this.
 
 ## Tested against a real server, not just fixtures
 
@@ -147,11 +161,11 @@ Development caught several real bugs, not hypotheticals:
 npm test
 ```
 
-12/12 pass, exercising both the positive and negative case for every
+15/15 pass, exercising both the positive and negative case for every
 scenario against real MCP servers (stdio and HTTP, both built for the
 test suite using the official `@modelcontextprotocol/sdk`), plus scenario
-selection in the runner — including that `unauthenticated-tool-exposure`
-still runs when the primary credentialed connection fails.
+selection in the runner — including that the HTTP-only scenarios still run
+when the primary credentialed connection fails.
 
 ## Architecture
 
@@ -160,6 +174,7 @@ mcp-redteam/
 ├── src/
 │   ├── client.ts                    # connects to a target MCP server over stdio
 │   ├── http-client.ts               # connects to a target MCP server over Streamable HTTP
+│   ├── unsigned-jwt.ts              # builds a syntactically JWT-shaped, unsigned probe token
 │   ├── runner.ts                    # orchestrates scenarios, collects results
 │   ├── report.ts                    # console/JSON formatting
 │   ├── cli.ts                       # mcp-redteam scan ...
@@ -167,7 +182,8 @@ mcp-redteam/
 │       ├── tool-description-stability.ts
 │       ├── unannotated-destructive-tools.ts
 │       ├── oversized-payload.ts
-│       └── unauthenticated-tool-exposure.ts
+│       ├── unauthenticated-tool-exposure.ts
+│       └── token-audience-validation.ts
 └── tests/
     ├── fixtures/fixture-server.ts        # real stdio MCP server, mode-switched
     ├── fixtures/http-fixture-server.ts   # real HTTP MCP server, mode-switched
@@ -176,11 +192,12 @@ mcp-redteam/
 
 ## Roadmap
 
-Not shipped yet, deliberately: OAuth token-audience / confused-deputy
-validation (checking a server actually rejects a wrong-audience token, not
-just no token at all) and cross-session tool-scope isolation. These need
-more careful safety design before being invasive-by-default the way
-`oversized-payload` already is opt-in.
+Not shipped yet, deliberately: cross-session tool-scope isolation (does a
+compromised or manipulated response in one session ever leak trust into
+another), and real signed-token audience validation (needs a trusted test
+issuer, not just an unsigned probe). These need more careful safety design
+before being invasive-by-default the way `oversized-payload` already is
+opt-in.
 
 ## License
 

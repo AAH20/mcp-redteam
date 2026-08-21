@@ -6,6 +6,7 @@ import { runToolDescriptionStability, SCENARIO_NAME as STABILITY_NAME } from "./
 import { runUnannotatedDestructiveTools, SCENARIO_NAME as DESTRUCTIVE_NAME } from "./scenarios/unannotated-destructive-tools.js";
 import { runOversizedPayload, SCENARIO_NAME as PAYLOAD_NAME } from "./scenarios/oversized-payload.js";
 import { runUnauthenticatedToolExposure, SCENARIO_NAME as EXPOSURE_NAME } from "./scenarios/unauthenticated-tool-exposure.js";
+import { runTokenAudienceValidation, SCENARIO_NAME as AUDIENCE_NAME } from "./scenarios/token-audience-validation.js";
 
 export type Target =
   | ({ kind: "stdio" } & TargetServerParams)
@@ -21,14 +22,14 @@ export interface RunOptions {
  * returning one result per scenario. A scenario that throws does not abort
  * the run — its failure is recorded and the rest proceed.
  *
- * unauthenticated-tool-exposure only applies to HTTP targets: it makes its
- * own independent, credential-free connection attempt to the same URL,
- * separate from the (possibly authenticated) connection used for the other
- * scenarios — and runs regardless of whether that primary connection
- * succeeds. If the caller didn't supply working credentials, the primary
- * connection failing is expected, not a reason to also skip the one
- * scenario that doesn't need it (arguably the most relevant result to get
- * in exactly that situation).
+ * unauthenticated-tool-exposure and token-audience-validation only apply
+ * to HTTP targets: each makes its own independent connection attempt to
+ * the same URL — one with no credentials, one with a syntactically
+ * JWT-shaped but wrong-audience token — separate from the (possibly
+ * authenticated) connection used for the other scenarios, and both run
+ * regardless of whether that primary connection succeeds. If the caller
+ * didn't supply working credentials, the primary connection failing is
+ * expected, not a reason to also skip the scenarios that don't need it.
  */
 export async function runAgainstTarget(
   target: Target,
@@ -60,6 +61,7 @@ export async function runAgainstTarget(
 
   if (target.kind === "http") {
     results.push(await safeRun(EXPOSURE_NAME, () => runUnauthenticatedToolExposure(target.url)));
+    results.push(await safeRun(AUDIENCE_NAME, () => runTokenAudienceValidation(target.url)));
   }
 
   return results;

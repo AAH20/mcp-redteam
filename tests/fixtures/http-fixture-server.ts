@@ -18,10 +18,26 @@ import express from "express";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
-type FixtureMode = "authenticated" | "unauthenticated";
+type FixtureMode =
+  | "authenticated"
+  | "unauthenticated"
+  | "audience-blind"
+  | "audience-validating";
 
 const mode = (process.env.FIXTURE_MODE ?? "authenticated") as FixtureMode;
 const REQUIRED_TOKEN = "test-token";
+const EXPECTED_AUDIENCE = "https://mcp-redteam-fixture.example.com";
+
+/** Decodes a bearer token's payload segment without verifying its signature. */
+function decodeJwtPayload(bearerToken: string): Record<string, unknown> | undefined {
+  const parts = bearerToken.split(".");
+  if (parts.length !== 3 || !parts[1]) return undefined;
+  try {
+    return JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8"));
+  } catch {
+    return undefined;
+  }
+}
 
 function buildServer(): McpServer {
   const mcpServer = new McpServer({ name: "mcp-redteam-http-fixture", version: "0.1.0" });
@@ -48,6 +64,26 @@ app.post("/mcp", async (req, res) => {
       return;
     }
   }
+
+  if (mode === "audience-blind") {
+    // Shallow, real-world-shaped bug: checks a header is present, never
+    // looks at what it actually contains.
+    if (!req.headers.authorization) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+  }
+
+  if (mode === "audience-validating") {
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : undefined;
+    const claims = bearerToken ? decodeJwtPayload(bearerToken) : undefined;
+    if (!claims || claims.aud !== EXPECTED_AUDIENCE) {
+      res.status(401).json({ error: "unauthorized", detail: "token audience mismatch" });
+      return;
+    }
+  }
+
   // "unauthenticated" mode: no check at all, mirroring RufRoot's actual bug.
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
   res.on("close", () => {

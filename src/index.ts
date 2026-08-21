@@ -7,3 +7,5 @@ export { runToolDescriptionStability } from "./scenarios/tool-description-stabil
 export { runUnannotatedDestructiveTools } from "./scenarios/unannotated-destructive-tools.js";
 export { runOversizedPayload } from "./scenarios/oversized-payload.js";
 export { runUnauthenticatedToolExposure } from "./scenarios/unauthenticated-tool-exposure.js";
+export { runTokenAudienceValidation } from "./scenarios/token-audience-validation.js";
+export { buildUnsignedJwtShapedToken } from "./unsigned-jwt.js";

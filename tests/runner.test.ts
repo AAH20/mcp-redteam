@@ -32,39 +32,52 @@ test("allowToolCalls opts into the oversized-payload scenario as well", async ()
   }
 });
 
-test("HTTP target also runs unauthenticated-tool-exposure alongside the client scenarios", async () => {
+test("HTTP target also runs the credential-independent scenarios alongside the client ones", async () => {
   const { baseUrl, stop } = await startHttpFixture("unauthenticated");
   try {
     const results = await runAgainstTarget({ kind: "http", url: baseUrl });
     const names = results.map((r) => r.scenario).sort();
     assert.deepEqual(names, [
+      "token-audience-validation",
       "tool-description-stability",
       "unannotated-destructive-tools",
       "unauthenticated-tool-exposure",
-    ]);
+    ].sort());
     const exposure = results.find((r) => r.scenario === "unauthenticated-tool-exposure");
     assert.equal(exposure?.findings.length, 1);
+    const audience = results.find((r) => r.scenario === "token-audience-validation");
+    // "unauthenticated" mode accepts anything, including the wrong-audience
+    // probe token, so this scenario should flag it too on this fixture.
+    assert.equal(audience?.findings.length, 1);
   } finally {
     stop();
   }
 });
 
-test("unauthenticated-tool-exposure still runs when the primary (credentialed) connection fails", async () => {
+test("credential-independent scenarios still run when the primary (credentialed) connection fails", async () => {
   const { baseUrl, stop } = await startHttpFixture("authenticated");
   try {
     // No headers supplied — the primary connection is expected to fail
-    // against a fixture that requires auth. The scenario that doesn't
-    // need that connection should still produce a real result rather
-    // than the whole run aborting.
+    // against a fixture that requires auth. The scenarios that don't need
+    // that connection should still produce real results rather than the
+    // whole run aborting.
     const results = await runAgainstTarget({ kind: "http", url: baseUrl });
     const names = results.map((r) => r.scenario).sort();
-    assert.deepEqual(names, ["connection", "unauthenticated-tool-exposure"]);
+    assert.deepEqual(
+      names,
+      ["connection", "token-audience-validation", "unauthenticated-tool-exposure"].sort(),
+    );
 
     const connection = results.find((r) => r.scenario === "connection");
     assert.match(connection?.error ?? "", /primary connection/);
 
     const exposure = results.find((r) => r.scenario === "unauthenticated-tool-exposure");
     assert.deepEqual(exposure?.findings, []);
+
+    // "authenticated" mode requires an exact bearer match, which the
+    // wrong-audience probe token also fails to satisfy.
+    const audience = results.find((r) => r.scenario === "token-audience-validation");
+    assert.deepEqual(audience?.findings, []);
   } finally {
     stop();
   }
