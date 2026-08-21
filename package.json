@@ -1,0 +1,48 @@
+{
+  "name": "mcp-redteam",
+  "version": "0.1.0",
+  "description": "Adversarial scenario runner for MCP servers: tool-description rug-pulls, unannotated destructive tools, and oversized-payload handling on read-only tools.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "author": "Ahmed Hassan (A2Z SOC)",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AAH20/mcp-redteam.git"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "red-team",
+    "security",
+    "agentic-ai",
+    "ai-security"
+  ],
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "bin": {
+    "mcp-redteam": "./dist/src/cli.js"
+  },
+  "files": [
+    "dist/src",
+    "README.md",
+    "LICENSE",
+    "SKILL.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepare": "npm run build",
+    "test": "npm run build && node --test --test-timeout=15000 dist/tests/tool-description-stability.test.js dist/tests/unannotated-destructive-tools.test.js dist/tests/oversized-payload.test.js dist/tests/runner.test.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.4.0",
+    "zod": "^3.25.0"
+  }
+}
