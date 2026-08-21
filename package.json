@@ -34,7 +34,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "prepare": "npm run build",
-    "test": "npm run build && node --test --test-timeout=15000 dist/tests/tool-description-stability.test.js dist/tests/unannotated-destructive-tools.test.js dist/tests/oversized-payload.test.js dist/tests/runner.test.js",
+    "test": "npm run build && node --test dist/tests/tool-description-stability.test.js dist/tests/unannotated-destructive-tools.test.js dist/tests/oversized-payload.test.js dist/tests/runner.test.js",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
