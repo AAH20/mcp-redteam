@@ -40,6 +40,7 @@ test("HTTP target also runs the credential-independent scenarios alongside the c
     assert.deepEqual(names, [
       "token-audience-validation",
       "tool-description-stability",
+      "tools-call-authorization-bypass",
       "unannotated-destructive-tools",
       "unauthenticated-tool-exposure",
     ].sort());
@@ -49,6 +50,11 @@ test("HTTP target also runs the credential-independent scenarios alongside the c
     // "unauthenticated" mode accepts anything, including the wrong-audience
     // probe token, so this scenario should flag it too on this fixture.
     assert.equal(audience?.findings.length, 1);
+    const callBypass = results.find((r) => r.scenario === "tools-call-authorization-bypass");
+    // "unauthenticated" mode has no gating at all, on any method, so an
+    // unauthenticated tools/call using the tool name discovered by the
+    // primary connection succeeds here too.
+    assert.equal(callBypass?.findings.length, 1);
   } finally {
     stop();
   }
@@ -65,7 +71,12 @@ test("credential-independent scenarios still run when the primary (credentialed)
     const names = results.map((r) => r.scenario).sort();
     assert.deepEqual(
       names,
-      ["connection", "token-audience-validation", "unauthenticated-tool-exposure"].sort(),
+      [
+        "connection",
+        "token-audience-validation",
+        "tools-call-authorization-bypass",
+        "unauthenticated-tool-exposure",
+      ].sort(),
     );
 
     const connection = results.find((r) => r.scenario === "connection");
@@ -78,6 +89,11 @@ test("credential-independent scenarios still run when the primary (credentialed)
     // wrong-audience probe token also fails to satisfy.
     const audience = results.find((r) => r.scenario === "token-audience-validation");
     assert.deepEqual(audience?.findings, []);
+
+    // The primary connection never succeeded, so there's no known tool
+    // name to probe — nothing to flag, and nothing guessed.
+    const callBypass = results.find((r) => r.scenario === "tools-call-authorization-bypass");
+    assert.deepEqual(callBypass?.findings, []);
   } finally {
     stop();
   }

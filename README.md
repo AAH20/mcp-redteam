@@ -46,6 +46,13 @@ incidents:
    actually issued for them (RFC 9068's audience claim) — this checks the
    floor of that: does the server look at the token's claims at all, or
    does it just check that *some* Authorization header is present?
+6. **`tools-call-authorization-bypass`** *(HTTP targets only)* — makes a
+   third independent, credential-free connection attempt and calls a real
+   tool directly (a tool name learned from the primary connection's own
+   `tools/list`), without listing first. Checks whether authorization
+   enforced on one MCP operation is actually enforced on the one that
+   matters most: invoking a tool. Reports no findings if there's no known
+   tool name to probe — it never guesses.
 
 ## What this is not
 
@@ -92,20 +99,21 @@ mcp-redteam scan --allow-tool-calls -- node ./my-server.js
 # Machine-readable output, e.g. for CI
 mcp-redteam scan --json -- node ./my-server.js
 
-# HTTP target — also runs unauthenticated-tool-exposure automatically
+# HTTP target — also runs the 3 credential-independent scenarios automatically
 mcp-redteam scan --url http://localhost:3001/mcp
 
-# HTTP target with credentials for the other scenarios (exposure always
-# connects with none, regardless of --header)
+# HTTP target with credentials for the other scenarios (the independent
+# scenarios always connect with none, regardless of --header)
 mcp-redteam scan --url http://localhost:3001/mcp --header "Authorization: Bearer sk-..."
 ```
 
 Exit code is `1` if any high/critical-severity finding was reported, `0`
 otherwise.
 
-## Why these three, specifically
+## Why these six, specifically
 
-Each scenario traces to a real, disclosed incident, not a hypothetical:
+Each scenario traces to a real, disclosed incident or a real, currently-open
+issue on a funded organization's own project — not a hypothetical:
 
 - **Rug-pull tools**: the general pattern behind documented MCP "tool
   poisoning" research (a tool that behaves differently once trusted).
@@ -128,6 +136,14 @@ Each scenario traces to a real, disclosed incident, not a hypothetical:
   explicit MUST-validate-audience requirement — but the requirement being
   in the spec doesn't mean real servers enforce it. No automated tool
   checked whether they actually do before this.
+- **`tools/call` authorization bypass**: the same underlying pattern shows
+  up independently across three funded organizations' own open issues —
+  `wso2/api-platform#2869` (GET/DELETE simply weren't gated while other
+  methods were), `BerriAI/litellm#31977` (`tools/list` works but
+  `tools/call` sends the wrong credential), and `BerriAI/litellm#36358`
+  (the OAuth handshake completes end-to-end but the upstream server never
+  actually receives the request). Authorization checked on one MCP
+  operation isn't reliably checked on the one that actually matters.
 
 ## Tested against a real server, not just fixtures
 
@@ -161,11 +177,12 @@ Development caught several real bugs, not hypotheticals:
 npm test
 ```
 
-15/15 pass, exercising both the positive and negative case for every
+18/18 pass, exercising both the positive and negative case for every
 scenario against real MCP servers (stdio and HTTP, both built for the
 test suite using the official `@modelcontextprotocol/sdk`), plus scenario
 selection in the runner — including that the HTTP-only scenarios still run
-when the primary credentialed connection fails.
+when the primary credentialed connection fails, and that
+`tools-call-authorization-bypass` never guesses a tool name.
 
 ## Architecture
 
@@ -183,7 +200,8 @@ mcp-redteam/
 │       ├── unannotated-destructive-tools.ts
 │       ├── oversized-payload.ts
 │       ├── unauthenticated-tool-exposure.ts
-│       └── token-audience-validation.ts
+│       ├── token-audience-validation.ts
+│       └── tools-call-authorization-bypass.ts
 └── tests/
     ├── fixtures/fixture-server.ts        # real stdio MCP server, mode-switched
     ├── fixtures/http-fixture-server.ts   # real HTTP MCP server, mode-switched

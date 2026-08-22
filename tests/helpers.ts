@@ -32,7 +32,13 @@ export async function connectToFixture(
  * assigned port. Caller is responsible for killing the returned process.
  */
 export async function startHttpFixture(
-  mode: "authenticated" | "unauthenticated" | "audience-blind" | "audience-validating",
+  mode:
+    | "authenticated"
+    | "unauthenticated"
+    | "audience-blind"
+    | "audience-validating"
+    | "call-not-gated"
+    | "call-gated",
 ): Promise<{ baseUrl: string; stop: () => void }> {
   const child: ChildProcess = spawn(process.execPath, [HTTP_FIXTURE_PATH], {
     env: inheritedEnv({ FIXTURE_MODE: mode }),

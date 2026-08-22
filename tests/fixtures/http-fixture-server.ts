@@ -22,7 +22,9 @@ type FixtureMode =
   | "authenticated"
   | "unauthenticated"
   | "audience-blind"
-  | "audience-validating";
+  | "audience-validating"
+  | "call-not-gated"
+  | "call-gated";
 
 const mode = (process.env.FIXTURE_MODE ?? "authenticated") as FixtureMode;
 const REQUIRED_TOKEN = "test-token";
@@ -80,6 +82,22 @@ app.post("/mcp", async (req, res) => {
     const claims = bearerToken ? decodeJwtPayload(bearerToken) : undefined;
     if (!claims || claims.aud !== EXPECTED_AUDIENCE) {
       res.status(401).json({ error: "unauthorized", detail: "token audience mismatch" });
+      return;
+    }
+  }
+
+  if (mode === "call-not-gated" || mode === "call-gated") {
+    // initialize is never gated — the connection itself must succeed for
+    // either method to even be reachable. call-gated checks tools/list AND
+    // tools/call consistently; call-not-gated checks tools/list but skips
+    // the same check for tools/call, mirroring wso2/api-platform#2869
+    // (GET/DELETE not gated while other methods were) and the general
+    // shape of litellm#31977/#36358 (list-path auth doesn't carry through
+    // to the call path).
+    const method = req.body?.method;
+    const gatedMethods = mode === "call-gated" ? ["tools/list", "tools/call"] : ["tools/list"];
+    if (gatedMethods.includes(method) && req.headers.authorization !== `Bearer ${REQUIRED_TOKEN}`) {
+      res.status(401).json({ error: "unauthorized" });
       return;
     }
   }
