@@ -2,6 +2,7 @@
 
 **Adversarial scenario runner for MCP servers — real checks against a live server, not a static scan of source code.**
 
+[![CI](https://github.com/AAH20/mcp-redteam/actions/workflows/ci.yml/badge.svg)](https://github.com/AAH20/mcp-redteam/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 
 ---
@@ -9,8 +10,20 @@
 ## What this is
 
 `mcp-redteam` connects to a live MCP server — over stdio, or over
-Streamable HTTP — and runs scenarios modeled on real, disclosed MCP
-incidents:
+Streamable HTTP — and runs 6 scenarios, each modeled on a real, disclosed
+MCP incident or a currently-open issue on a funded organization's own
+project (sources below, not just names):
+
+| Scenario | Checks | Transport | Real basis |
+|:---|:---|:---|:---|
+| `tool-description-stability` | A tool's description/schema changing after it's already been inspected ("rug pull") | both | general MCP tool-poisoning research |
+| `unannotated-destructive-tools` | Destructive-sounding tools (`delete`, `execute`, ...) with no `destructiveHint` annotation | both | MCP spec's own tool-annotation design intent |
+| `oversized-payload` *(opt-in)* | Whether a `readOnlyHint: true` tool bounds a large argument or hangs | both | `BerriAI/litellm#35142` |
+| `unauthenticated-tool-exposure` | Does `tools/list` succeed with zero credentials presented | HTTP | RufRoot, CVE-2026-59726, CVSS 10.0 |
+| `token-audience-validation` | Does the server accept an unsigned, wrong-audience bearer token | HTTP | MCP spec `MUST` audience-validation requirement |
+| `tools-call-authorization-bypass` | Is `tools/call` gated as strictly as `tools/list` | HTTP | `wso2/api-platform#2869`, `litellm#31977`, `litellm#36358` |
+
+Each row is explained in full, with the honest scope caveats, below.
 
 1. **`tool-description-stability`** — lists the target's tools twice, a
    short delay apart, and diffs them by name. A tool whose description or
